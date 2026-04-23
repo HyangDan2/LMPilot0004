@@ -533,132 +533,164 @@ class MainWindow(QMainWindow):
   <style>
     :root {{
       color-scheme: light;
-      --bg: #f6f1e8;
-      --surface: #fffdf8;
-      --surface-2: #f1eadf;
-      --text: #1f1a17;
-      --muted: #6a5f57;
-      --border: #d7cab8;
-      --accent: #ab5c2f;
-      --accent-strong: #8d431d;
-      --code-bg: #201a17;
-      --code-text: #f8efe6;
+      --bg: #ffffff;
+      --surface: #ffffff;
+      --surface-2: #f5f5f5;
+      --surface-3: #e2e2e2;
+      --text: #000000;
+      --muted: #444444;
+      --border: #cfcfcf;
+      --accent: #000000;
+      --accent-strong: #000000;
+      --code-bg: #111111;
+      --code-surface: #1a1a1a;
+      --code-text: #f5f5f5;
     }}
     * {{ box-sizing: border-box; }}
     body {{
       margin: 0;
       padding: 24px;
-      background:
-        radial-gradient(circle at top left, rgba(171, 92, 47, 0.14), transparent 28%),
-        linear-gradient(180deg, #fbf6ef 0%, var(--bg) 100%);
+      background: var(--bg);
       color: var(--text);
-      font-family: "Georgia", "Iowan Old Style", serif;
-      line-height: 1.6;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      font-size: 15px;
+      line-height: 1.7;
     }}
     .content {{
       max-width: 1000px;
       margin: 0 auto;
-      background: rgba(255, 253, 248, 0.88);
-      border: 1px solid rgba(215, 202, 184, 0.85);
-      border-radius: 20px;
-      padding: 24px;
-      box-shadow: 0 18px 50px rgba(70, 45, 30, 0.08);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      box-shadow: none;
     }}
     h1, h2, h3, h4, h5, h6 {{
-      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      color: var(--text);
       line-height: 1.15;
       margin-top: 1.4em;
-      margin-bottom: 0.5em;
+      margin-bottom: 0.55em;
     }}
-    p, ul, ol, blockquote {{ margin: 0 0 1em; }}
-    a {{ color: var(--accent-strong); }}
+    p, ul, ol, blockquote, table {{ margin: 0 0 1em; }}
+    p, li, td {{
+      color: var(--text);
+    }}
+    ul, ol {{
+      padding-left: 1.4em;
+    }}
+    a {{
+      color: var(--accent-strong);
+      text-decoration-thickness: 1.5px;
+      text-underline-offset: 2px;
+    }}
     code {{
       background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--surface-3);
       border-radius: 6px;
-      padding: 0.1em 0.35em;
+      padding: 0.12em 0.38em;
       font-family: "SFMono-Regular", "Menlo", monospace;
       font-size: 0.92em;
+      font-weight: 600;
     }}
     pre {{
       margin: 0;
       white-space: pre-wrap;
-      word-break: break-word;
+      overflow-x: auto;
+      word-break: normal;
       font-family: "SFMono-Regular", "Menlo", monospace;
       font-size: 13px;
-      line-height: 1.5;
+      line-height: 1.6;
+    }}
+    pre code {{
+      background: transparent;
+      color: inherit;
+      border: 0;
+      border-radius: 0;
+      padding: 0;
+      font-weight: 500;
     }}
     blockquote {{
-      border-left: 4px solid rgba(171, 92, 47, 0.5);
-      padding-left: 14px;
+      border-left: 4px solid #999999;
+      padding: 4px 0 4px 14px;
       color: var(--muted);
       margin-left: 0;
+      background: #fafafa;
+      border-radius: 4px 12px 12px 4px;
     }}
     table {{
       width: 100%;
       border-collapse: collapse;
-      margin: 0 0 1em;
       overflow: hidden;
       border-radius: 12px;
       background: var(--surface);
+      color: var(--text);
     }}
     th, td {{
       border: 1px solid var(--border);
       padding: 10px 12px;
       text-align: left;
+      vertical-align: top;
     }}
     th {{
       background: var(--surface-2);
-      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--text);
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      font-weight: 700;
     }}
     .code-block {{
       margin: 1.2em 0;
-      border: 1px solid rgba(215, 202, 184, 0.8);
-      border-radius: 16px;
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
       overflow: hidden;
-      background: #181311;
-      box-shadow: 0 14px 36px rgba(28, 18, 12, 0.18);
+      background: var(--code-bg);
+      box-shadow: none;
     }}
     .code-toolbar {{
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      padding: 10px 14px;
-      background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
-      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 11px 14px;
+      background: #222222;
+      border-bottom: 1px solid #333333;
     }}
     .code-label {{
-      color: #eadbcd;
-      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      color: #ffffff;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
       font-size: 12px;
       letter-spacing: 0.08em;
       text-transform: uppercase;
+      font-weight: 700;
     }}
     .copy-button {{
       border: 0;
       border-radius: 999px;
       padding: 8px 12px;
-      background: linear-gradient(180deg, #f0b07f 0%, #d88149 100%);
-      color: #24160f;
-      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      background: #ffffff;
+      color: #000000;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
       font-size: 12px;
       font-weight: 700;
       cursor: pointer;
+      box-shadow: none;
     }}
-    .copy-button:hover {{ filter: brightness(1.03); }}
+    .copy-button:hover {{ background: #f0f0f0; }}
     .code-content {{
-      padding: 16px;
+      padding: 18px 16px;
       color: var(--code-text);
-      background: linear-gradient(180deg, #211916 0%, #16100e 100%);
+      background: var(--code-surface);
     }}
     .empty-state {{
       padding: 42px 20px;
       text-align: center;
       border: 1px dashed var(--border);
-      border-radius: 18px;
+      border-radius: 12px;
       color: var(--muted);
-      background: rgba(255, 253, 248, 0.7);
-      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      background: #fafafa;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      font-weight: 600;
     }}
   </style>
   <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
