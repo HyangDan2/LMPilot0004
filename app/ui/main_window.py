@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import csv
-from pathlib import Path
 from datetime import datetime
+import html
+from pathlib import Path
+import re
 
-from PySide6.QtCore import Qt, QThread
+from PySide6.QtCore import QObject, Qt, QThread, Slot
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -22,16 +25,35 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QSplitter,
     QStatusBar,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
+
+try:
+    import markdown as markdown_lib
+except ImportError:
+    markdown_lib = None
+
+try:
+    from PySide6.QtWebChannel import QWebChannel
+    from PySide6.QtWebEngineWidgets import QWebEngineView
+except ImportError:
+    QWebChannel = None
+    QWebEngineView = None
 
 from app.core.config_manager import AppConfig, ConfigManager
 from app.core.prompt_builder import build_user_prompt
 from app.services.openai_compatible_client import OpenAICompatibleClient
 from app.workers.connection_worker import ConnectionWorker
 from app.workers.stream_worker import StreamWorker
+
+
+class ClipboardBridge(QObject):
+    @Slot(str)
+    def copyText(self, text: str) -> None:
+        clipboard = QGuiApplication.clipboard()
+        if clipboard is not None:
+            clipboard.setText(text)
 
 
 class MainWindow(QMainWindow):
@@ -44,9 +66,11 @@ class MainWindow(QMainWindow):
         self.config = self.config_manager.load()
         self.session_started_at = datetime.now()
         self.log_path = self._create_session_log()
+        self.output_markdown = ''
 
         self.stream_thread: QThread | None = None
         self.connection_thread: QThread | None = None
+        self.output_bridge = ClipboardBridge()
 
         self._build_ui()
         self._apply_config_to_ui(self.config)
@@ -279,9 +303,21 @@ class MainWindow(QMainWindow):
         group = QGroupBox('Modified Code / Model Output')
         layout = QVBoxLayout(group)
 
-        self.output_edit = QTextEdit()
-        self.output_edit.setReadOnly(True)
-        layout.addWidget(self.output_edit)
+        if QWebEngineView is not None and QWebChannel is not None:
+            self.output_view = QWebEngineView()
+            self.output_channel = QWebChannel(self.output_view.page())
+            self.output_channel.registerObject('clipboardBridge', self.output_bridge)
+            self.output_view.page().setWebChannel(self.output_channel)
+            layout.addWidget(self.output_view)
+            self._render_output_markdown()
+        else:
+            self.output_view = None
+            self.output_fallback_edit = QPlainTextEdit()
+            self.output_fallback_edit.setReadOnly(True)
+            self.output_fallback_edit.setPlaceholderText(
+                'Install PySide6 WebEngine support to enable rendered markdown and copy buttons.'
+            )
+            layout.addWidget(self.output_fallback_edit)
 
         return group
 
@@ -404,7 +440,8 @@ class MainWindow(QMainWindow):
         self._log('Request input copied to clipboard.')
 
     def _clear_output(self) -> None:
-        self.output_edit.clear()
+        self.output_markdown = ''
+        self._render_output_markdown()
         self._log('Model output cleared.')
 
     def _on_test_connection(self) -> None:
@@ -445,7 +482,8 @@ class MainWindow(QMainWindow):
             bug_report=self.issue_edit.toPlainText(),
         )
         self.request_preview_edit.setPlainText(prompt)
-        self.output_edit.clear()
+        self.output_markdown = ''
+        self._render_output_markdown()
         self._log('Run requested.')
         self._set_busy(True)
 
@@ -472,15 +510,238 @@ class MainWindow(QMainWindow):
         self.stream_thread.start()
 
     def _append_output_chunk(self, text: str) -> None:
-        cursor = self.output_edit.textCursor()
-        cursor.movePosition(cursor.MoveOperation.End)
-        cursor.insertText(text)
-        self.output_edit.setTextCursor(cursor)
-        self.output_edit.ensureCursorVisible()
+        self.output_markdown += text
+        self._render_output_markdown()
 
     def _on_stream_error(self, message: str) -> None:
         self._log(f'Error: {message}')
         QMessageBox.warning(self, 'Run Error', message)
+
+    def _render_output_markdown(self) -> None:
+        if getattr(self, 'output_view', None) is not None:
+            self.output_view.setHtml(self._build_output_html(self.output_markdown))
+            return
+        if hasattr(self, 'output_fallback_edit'):
+            self.output_fallback_edit.setPlainText(self.output_markdown)
+
+    def _build_output_html(self, markdown_text: str) -> str:
+        body_html = self._markdown_to_html(markdown_text)
+        return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <style>
+    :root {{
+      color-scheme: light;
+      --bg: #f6f1e8;
+      --surface: #fffdf8;
+      --surface-2: #f1eadf;
+      --text: #1f1a17;
+      --muted: #6a5f57;
+      --border: #d7cab8;
+      --accent: #ab5c2f;
+      --accent-strong: #8d431d;
+      --code-bg: #201a17;
+      --code-text: #f8efe6;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      padding: 24px;
+      background:
+        radial-gradient(circle at top left, rgba(171, 92, 47, 0.14), transparent 28%),
+        linear-gradient(180deg, #fbf6ef 0%, var(--bg) 100%);
+      color: var(--text);
+      font-family: "Georgia", "Iowan Old Style", serif;
+      line-height: 1.6;
+    }}
+    .content {{
+      max-width: 1000px;
+      margin: 0 auto;
+      background: rgba(255, 253, 248, 0.88);
+      border: 1px solid rgba(215, 202, 184, 0.85);
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 18px 50px rgba(70, 45, 30, 0.08);
+    }}
+    h1, h2, h3, h4, h5, h6 {{
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      line-height: 1.15;
+      margin-top: 1.4em;
+      margin-bottom: 0.5em;
+    }}
+    p, ul, ol, blockquote {{ margin: 0 0 1em; }}
+    a {{ color: var(--accent-strong); }}
+    code {{
+      background: var(--surface-2);
+      border-radius: 6px;
+      padding: 0.1em 0.35em;
+      font-family: "SFMono-Regular", "Menlo", monospace;
+      font-size: 0.92em;
+    }}
+    pre {{
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: "SFMono-Regular", "Menlo", monospace;
+      font-size: 13px;
+      line-height: 1.5;
+    }}
+    blockquote {{
+      border-left: 4px solid rgba(171, 92, 47, 0.5);
+      padding-left: 14px;
+      color: var(--muted);
+      margin-left: 0;
+    }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0 0 1em;
+      overflow: hidden;
+      border-radius: 12px;
+      background: var(--surface);
+    }}
+    th, td {{
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      text-align: left;
+    }}
+    th {{
+      background: var(--surface-2);
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+    }}
+    .code-block {{
+      margin: 1.2em 0;
+      border: 1px solid rgba(215, 202, 184, 0.8);
+      border-radius: 16px;
+      overflow: hidden;
+      background: #181311;
+      box-shadow: 0 14px 36px rgba(28, 18, 12, 0.18);
+    }}
+    .code-toolbar {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 14px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }}
+    .code-label {{
+      color: #eadbcd;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }}
+    .copy-button {{
+      border: 0;
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: linear-gradient(180deg, #f0b07f 0%, #d88149 100%);
+      color: #24160f;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }}
+    .copy-button:hover {{ filter: brightness(1.03); }}
+    .code-content {{
+      padding: 16px;
+      color: var(--code-text);
+      background: linear-gradient(180deg, #211916 0%, #16100e 100%);
+    }}
+    .empty-state {{
+      padding: 42px 20px;
+      text-align: center;
+      border: 1px dashed var(--border);
+      border-radius: 18px;
+      color: var(--muted);
+      background: rgba(255, 253, 248, 0.7);
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+    }}
+  </style>
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+  <script>
+    let bridge = null;
+    if (typeof QWebChannel !== 'undefined') {{
+      new QWebChannel(qt.webChannelTransport, function(channel) {{
+        bridge = channel.objects.clipboardBridge;
+      }});
+    }}
+
+    function copyCodeById(codeId, button) {{
+      const codeNode = document.getElementById(codeId);
+      if (!codeNode) {{
+        return;
+      }}
+      const text = codeNode.innerText;
+      if (bridge && bridge.copyText) {{
+        bridge.copyText(text);
+      }} else if (navigator.clipboard) {{
+        navigator.clipboard.writeText(text);
+      }}
+      if (button) {{
+        const original = button.innerText;
+        button.innerText = 'Copied';
+        setTimeout(() => {{
+          button.innerText = original;
+        }}, 1200);
+      }}
+    }}
+  </script>
+</head>
+<body>
+  <div class="content">
+    {body_html}
+  </div>
+</body>
+</html>"""
+
+    def _markdown_to_html(self, markdown_text: str) -> str:
+        if not markdown_text.strip():
+            return '<div class="empty-state">Run the assistant to render markdown output here.</div>'
+
+        parts: list[str] = []
+        code_index = 0
+        pattern = re.compile(r"```([^\n`]*)\n(.*?)```", re.DOTALL)
+        last_end = 0
+        for match in pattern.finditer(markdown_text):
+            plain_segment = markdown_text[last_end:match.start()]
+            if plain_segment.strip():
+                parts.append(self._render_markdown_segment(plain_segment))
+
+            language = match.group(1).strip() or 'code'
+            code = html.escape(match.group(2).rstrip('\n'))
+            code_id = f'code-block-{code_index}'
+            parts.append(
+                '<div class="code-block">'
+                '<div class="code-toolbar">'
+                f'<span class="code-label">{html.escape(language)}</span>'
+                f'<button class="copy-button" onclick="copyCodeById(\'{code_id}\', this)">Copy</button>'
+                '</div>'
+                f'<pre class="code-content"><code id="{code_id}">{code}</code></pre>'
+                '</div>'
+            )
+            code_index += 1
+            last_end = match.end()
+
+        trailing_segment = markdown_text[last_end:]
+        if trailing_segment.strip():
+            parts.append(self._render_markdown_segment(trailing_segment))
+
+        if not parts:
+            parts.append(self._render_markdown_segment(markdown_text))
+        return ''.join(parts)
+
+    def _render_markdown_segment(self, text: str) -> str:
+        if markdown_lib is not None:
+            return markdown_lib.markdown(
+                text,
+                extensions=['extra', 'nl2br', 'sane_lists'],
+            )
+        escaped = html.escape(text).replace('\n', '<br>\n')
+        return f'<p>{escaped}</p>'
 
     def _create_session_log(self) -> Path:
         log_dir = Path(__file__).resolve().parents[2] / 'log'
