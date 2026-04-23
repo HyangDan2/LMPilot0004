@@ -1,0 +1,8 @@
+base_url: http://127.0.0.1:8000/v1
+api_key: ''
+model_name: ''
+system_prompt: You are a careful coding assistant. Analyze the current code and issue, then produce a corrected solution.
+temperature: 0.2
+max_tokens: 4096
+stream: true
+timeout_seconds: 120
